@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/masterzen/winrm"
-	"github.com/nu7hatch/gouuid"
+	uuid "github.com/nu7hatch/gouuid"
 )
 
 func doCopy(client *winrm.Client, config *Config, in io.Reader, toPath string) error {
@@ -117,11 +117,7 @@ func restoreContent(client *winrm.Client, fromPath, toPath string) error {
 		$tmp_file_path = [System.IO.Path]::GetFullPath("%s")
 		$dest_file_path = [System.IO.Path]::GetFullPath("%s".Trim("'"))
 		if (Test-Path $dest_file_path) {
-			if (Test-Path -Path $dest_file_path -PathType container) {
-				Exit 1
-			} else {
-				rm $dest_file_path
-			}
+			rm $dest_file_path
 		}
 		else {
 			$dest_dir = ([System.IO.Path]::GetDirectoryName($dest_file_path))
