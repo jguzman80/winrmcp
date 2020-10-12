@@ -223,5 +223,5 @@ func tempFileName() (string, error) {
 		return "", err
 	}
 
-	return fmt.Sprintf("winrmcp-%s.zip", uniquePart), nil
+	return fmt.Sprintf("winrmcp-%s.tmp", uniquePart), nil
 }
