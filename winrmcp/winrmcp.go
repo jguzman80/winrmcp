@@ -1,10 +1,13 @@
 package winrmcp
 
 import (
+	"archive/zip"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dylanmei/iso8601"
@@ -61,6 +64,7 @@ func New(addr string, config *Config) (*Winrmcp, error) {
 }
 
 func (fs *Winrmcp) Copy(fromPath, toPath string) error {
+
 	f, err := os.Open(fromPath)
 	if err != nil {
 		return fmt.Errorf("Couldn't read file %s: %v", fromPath, err)
@@ -75,13 +79,28 @@ func (fs *Winrmcp) Copy(fromPath, toPath string) error {
 	if !fi.IsDir() {
 		return fs.Write(toPath, f)
 	} else {
-		fw := fileWalker{
-			client:  fs.client,
-			config:  fs.config,
-			toDir:   toPath,
-			fromDir: fromPath,
+
+		tempFile, err := tempFileName()
+		tempPath := fmt.Sprintf("%s/%s", os.TempDir(), tempFile)
+
+		log.Printf("Temp Compressed File: %s", tempPath)
+
+		if err != nil {
+			return fmt.Errorf("Error generating unique filename: %v", err)
 		}
-		return filepath.Walk(fromPath, fw.copyFile)
+
+		ziperr := zipit(fromPath, tempPath)
+		if ziperr != nil {
+			return fmt.Errorf("Error Zipping directory: %s", ziperr)
+		}
+
+		temp, err := os.Open(tempPath)
+		if err != nil {
+			return fmt.Errorf("Couldn't read file %s: %v", tempPath, err)
+		}
+		defer temp.Close()
+
+		return fs.Write(toPath, temp)
 	}
 }
 
@@ -120,6 +139,70 @@ func (fw *fileWalker) copyFile(fromPath string, fi os.FileInfo, err error) error
 	}
 
 	return doCopy(fw.client, fw.config, f, winPath(toPath))
+}
+
+func zipit(source, target string) error {
+
+	zipfile, err := os.Create(target)
+	if err != nil {
+		return err
+	}
+	defer zipfile.Close()
+
+	archive := zip.NewWriter(zipfile)
+	defer archive.Close()
+
+	info, err := os.Stat(source)
+	if err != nil {
+		return nil
+	}
+
+	var baseDir string
+	if info.IsDir() {
+		baseDir = filepath.Base(source)
+	}
+
+	filepath.Walk(source, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		header, err := zip.FileInfoHeader(info)
+		if err != nil {
+			return err
+		}
+
+		if baseDir != "" {
+			//header.Name = sanitizedName(filepath.Join(baseDir, strings.TrimPrefix(path, source)))
+			header.Name = filepath.Join(baseDir, strings.TrimPrefix(path, source))
+
+		}
+
+		if info.IsDir() {
+			header.Name += "/"
+		} else {
+			header.Method = zip.Deflate
+		}
+
+		writer, err := archive.CreateHeader(header)
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		_, err = io.Copy(writer, file)
+		return err
+	})
+
+	return err
 }
 
 func shouldUploadFile(fi os.FileInfo) bool {

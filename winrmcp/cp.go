@@ -20,7 +20,7 @@ func doCopy(client *winrm.Client, config *Config, in io.Reader, toPath string) e
 	tempPath := "$env:TEMP\\" + tempFile
 
 	if os.Getenv("WINRMCP_DEBUG") != "" {
-		log.Printf("Copying file to %s\n", tempPath)
+		log.Printf("Copying files to %s\n", tempPath)
 	}
 
 	err = uploadContent(client, config.MaxOperationsPerShell, "%TEMP%\\"+tempFile, in)
@@ -123,25 +123,7 @@ func restoreContent(client *winrm.Client, fromPath, toPath string) error {
 			$dest_dir = ([System.IO.Path]::GetDirectoryName($dest_file_path))
 			New-Item -ItemType directory -Force -ErrorAction SilentlyContinue -Path $dest_dir | Out-Null
 		}
-
-		if (Test-Path $tmp_file_path) {
-			$reader = [System.IO.File]::OpenText($tmp_file_path)
-			$writer = [System.IO.File]::OpenWrite($dest_file_path)
-			try {
-				for(;;) {
-					$base64_line = $reader.ReadLine()
-					if ($base64_line -eq $null) { break }
-					$bytes = [System.Convert]::FromBase64String($base64_line)
-					$writer.write($bytes, 0, $bytes.Length)
-				}
-			}
-			finally {
-				$reader.Close()
-				$writer.Close()
-			}
-		} else {
-			echo $null > $dest_file_path
-		}
+		Expand-Archive -Path $tmp_file_path -DestinationPath $dest_file_path
 	`, fromPath, toPath)
 
 	cmd, err := shell.Execute(winrm.Powershell(script))
@@ -210,7 +192,6 @@ func cleanupContent(client *winrm.Client, filePath string) error {
 
 func appendContent(shell *winrm.Shell, filePath, content string) error {
 	cmd, err := shell.Execute(fmt.Sprintf("echo %s >> \"%s\"", content, filePath))
-
 	if err != nil {
 		return err
 	}
@@ -242,5 +223,5 @@ func tempFileName() (string, error) {
 		return "", err
 	}
 
-	return fmt.Sprintf("winrmcp-%s.tmp", uniquePart), nil
+	return fmt.Sprintf("winrmcp-%s.zip", uniquePart), nil
 }
